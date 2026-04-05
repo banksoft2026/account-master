@@ -1,0 +1,489 @@
+{
+  "info": {
+    "name": "Account Product & Account Master API",
+    "description": "Collection for Account Product and Account Master Service (port 8082).\n\nNOTE: For account opening (POST /v1/accounts), the service calls localhost:8081 (customer-entity) to validate entity eligibility. Ensure the customer-entity service is running and the entityId exists with ACTIVE status, VERIFIED KYB, no sanctions, at least one active authorised signatory, and required verified documents.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",         "value": "http://localhost:8082" },
+    { "key": "productId",       "value": "" },
+    { "key": "paramKey",        "value": "overdraft_limit" },
+    { "key": "tierId",          "value": "" },
+    { "key": "chargeId",        "value": "" },
+    { "key": "accountId",       "value": "" },
+    { "key": "overrideParamKey","value": "overdraft_limit" },
+    { "key": "earmarkId",       "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1 – Account Product",
+      "item": [
+        {
+          "name": "POST Create Product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.success && json.data && json.data.productId) {",
+                  "    pm.collectionVariables.set('productId', json.data.productId);",
+                  "    console.log('productId saved:', json.data.productId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productCode\": \"CORP-CURRENT-GBP-001\",\n  \"productName\": \"Corporate Current Account — Standard GBP\",\n  \"accountType\": \"CURRENT\",\n  \"targetSegment\": \"CORPORATE\",\n  \"currencyCode\": \"GBP\",\n  \"allowCorporate\": true,\n  \"allowIndividual\": false,\n  \"minOpeningBalance\": 0,\n  \"maxBalance\": 50000000,\n  \"maxAccountPerCustomer\": 5,\n  \"effectiveFrom\": \"2026-04-01\",\n  \"createdBy\": \"admin\",\n  \"parameters\": [\n    {\n      \"paramKey\": \"overdraft_limit\",\n      \"paramLabel\": \"Overdraft limit\",\n      \"valueType\": \"DECIMAL\",\n      \"defaultValue\": \"100000\",\n      \"minValue\": \"0\",\n      \"maxValue\": \"5000000\",\n      \"overridableAtAccount\": true,\n      \"mandatory\": false,\n      \"effectiveFrom\": \"2026-04-01\"\n    },\n    {\n      \"paramKey\": \"daily_debit_limit\",\n      \"paramLabel\": \"Daily debit limit\",\n      \"valueType\": \"DECIMAL\",\n      \"defaultValue\": \"1000000\",\n      \"minValue\": \"10000\",\n      \"maxValue\": \"10000000\",\n      \"overridableAtAccount\": true,\n      \"mandatory\": true,\n      \"effectiveFrom\": \"2026-04-01\"\n    },\n    {\n      \"paramKey\": \"credit_interest_rate\",\n      \"paramLabel\": \"Credit interest rate\",\n      \"valueType\": \"RATE\",\n      \"defaultValue\": \"0.0\",\n      \"minValue\": \"0.0\",\n      \"maxValue\": \"5.0\",\n      \"overridableAtAccount\": false,\n      \"mandatory\": true,\n      \"effectiveFrom\": \"2026-04-01\"\n    },\n    {\n      \"paramKey\": \"statement_frequency\",\n      \"paramLabel\": \"Statement frequency\",\n      \"valueType\": \"ENUM:DAILY,WEEKLY,MONTHLY\",\n      \"defaultValue\": \"MONTHLY\",\n      \"overridableAtAccount\": true,\n      \"mandatory\": true,\n      \"effectiveFrom\": \"2026-04-01\"\n    }\n  ],\n  \"interestTiers\": [\n    {\n      \"tierName\": \"Standard debit tier\",\n      \"tierSequence\": 1,\n      \"balanceFrom\": -5000000,\n      \"balanceTo\": 0,\n      \"creditRate\": 0.0,\n      \"debitRate\": 8.5,\n      \"rateType\": \"FIXED\",\n      \"calculationBasis\": \"DAILY_BALANCE\",\n      \"effectiveFrom\": \"2026-04-01\"\n    }\n  ],\n  \"charges\": [\n    {\n      \"chargeCode\": \"MONTHLY-MAINT-001\",\n      \"chargeName\": \"Monthly maintenance fee\",\n      \"chargeType\": \"MAINTENANCE\",\n      \"chargeAmount\": 25.00,\n      \"chargeCurrency\": \"GBP\",\n      \"frequency\": \"MONTHLY\",\n      \"triggerEvent\": \"MONTH_END\",\n      \"waivable\": true,\n      \"minBalanceForWaiver\": 50000,\n      \"effectiveFrom\": \"2026-04-01\"\n    },\n    {\n      \"chargeCode\": \"CHAPS-OUT-001\",\n      \"chargeName\": \"Outgoing CHAPS fee\",\n      \"chargeType\": \"TRANSACTION\",\n      \"chargeAmount\": 20.00,\n      \"chargeCurrency\": \"GBP\",\n      \"frequency\": \"PER_TRANSACTION\",\n      \"triggerEvent\": \"CHAPS_DEBIT\",\n      \"waivable\": false,\n      \"effectiveFrom\": \"2026-04-01\"\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "GET List Products",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/products"
+          }
+        },
+        {
+          "name": "GET Full Product",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/products/{{productId}}"
+          }
+        },
+        {
+          "name": "PATCH Update Product",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/products/{{productId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productName\": \"Corporate Current Account GBP (Updated)\",\n  \"description\": \"Updated description\",\n  \"maxAccountPerCustomer\": 10,\n  \"allowJoint\": false,\n  \"allowCorporate\": true,\n  \"allowIndividual\": false,\n  \"effectiveFrom\": \"2026-04-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT Activate Product",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/products/{{productId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 – Product Parameters",
+      "item": [
+        {
+          "name": "POST Add Parameter",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/products/{{productId}}/parameters",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paramKey\": \"min_balance\",\n  \"paramLabel\": \"Minimum balance\",\n  \"valueType\": \"DECIMAL\",\n  \"defaultValue\": \"500\",\n  \"minValue\": \"0\",\n  \"maxValue\": \"100000\",\n  \"overridableAtAccount\": true,\n  \"mandatory\": false,\n  \"effectiveFrom\": \"2026-04-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET List Parameters",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/products/{{productId}}/parameters"
+          }
+        },
+        {
+          "name": "PUT Update Parameter",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/products/{{productId}}/parameters/{{paramKey}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paramKey\": \"overdraft_limit\",\n  \"paramLabel\": \"Overdraft limit (updated)\",\n  \"valueType\": \"DECIMAL\",\n  \"defaultValue\": \"150000\",\n  \"minValue\": \"0\",\n  \"maxValue\": \"5000000\",\n  \"overridableAtAccount\": true,\n  \"mandatory\": false,\n  \"effectiveFrom\": \"2026-04-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE Parameter",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/v1/products/{{productId}}/parameters/min_balance"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 – Interest Tiers",
+      "item": [
+        {
+          "name": "POST Add Tier",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.success && json.data && json.data.tierId) {",
+                  "    pm.collectionVariables.set('tierId', json.data.tierId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/products/{{productId}}/interest-tiers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tierName\": \"Credit tier 1\",\n  \"tierSequence\": 2,\n  \"balanceFrom\": 0,\n  \"balanceTo\": 100000,\n  \"creditRate\": 0.5,\n  \"debitRate\": 0.0,\n  \"rateType\": \"FIXED\",\n  \"calculationBasis\": \"DAILY_BALANCE\",\n  \"effectiveFrom\": \"2026-04-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET List Tiers",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/products/{{productId}}/interest-tiers"
+          }
+        },
+        {
+          "name": "PUT Update Tier",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/products/{{productId}}/interest-tiers/{{tierId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tierName\": \"Credit tier 1 (updated)\",\n  \"tierSequence\": 2,\n  \"balanceFrom\": 0,\n  \"balanceTo\": 200000,\n  \"creditRate\": 0.75,\n  \"debitRate\": 0.0,\n  \"rateType\": \"FIXED\",\n  \"calculationBasis\": \"DAILY_BALANCE\",\n  \"effectiveFrom\": \"2026-04-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE Tier",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/v1/products/{{productId}}/interest-tiers/{{tierId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 – Product Charges",
+      "item": [
+        {
+          "name": "POST Add Charge",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.success && json.data && json.data.chargeId) {",
+                  "    pm.collectionVariables.set('chargeId', json.data.chargeId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/products/{{productId}}/charges",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chargeCode\": \"DORMANCY-001\",\n  \"chargeName\": \"Dormancy fee\",\n  \"chargeType\": \"DORMANCY\",\n  \"chargeAmount\": 10.00,\n  \"chargeCurrency\": \"GBP\",\n  \"frequency\": \"MONTHLY\",\n  \"triggerEvent\": \"DORMANCY_START\",\n  \"waivable\": false,\n  \"effectiveFrom\": \"2026-04-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET List Charges",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/products/{{productId}}/charges"
+          }
+        },
+        {
+          "name": "PATCH Update Charge",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/products/{{productId}}/charges/{{chargeId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chargeName\": \"Dormancy fee (updated)\",\n  \"chargeAmount\": 15.00,\n  \"chargeCurrency\": \"GBP\",\n  \"frequency\": \"MONTHLY\",\n  \"waivable\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE Charge",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/v1/products/{{productId}}/charges/{{chargeId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 – Account Master",
+      "item": [
+        {
+          "name": "POST Open Account",
+          "description": "Opens an account. Calls customer-entity service (localhost:8081) to validate entity eligibility. Ensure that service is running.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.success && json.data && json.data.accountId) {",
+                  "    pm.collectionVariables.set('accountId', json.data.accountId);",
+                  "    console.log('accountId saved:', json.data.accountId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/accounts",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"master\": {\n    \"accountName\": \"Acme Corp GBP Operating Account\",\n    \"shortName\": \"ACME-GBP-OPS\",\n    \"customerId\": \"CUST-SAMPLE-001\",\n    \"entityId\": \"ENT-SAMPLE-001\",\n    \"branchCode\": \"BR-001\",\n    \"purposeCode\": \"OPERATING\",\n    \"riskCategory\": \"LOW\",\n    \"ownershipType\": \"CORPORATE\",\n    \"createdBy\": \"admin\"\n  },\n  \"parameterOverrides\": []\n}"
+            }
+          }
+        },
+        {
+          "name": "GET Full Account",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}"
+          }
+        },
+        {
+          "name": "GET Account Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/summary"
+          }
+        },
+        {
+          "name": "PATCH Update Account Master",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/master",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountName\": \"Acme Corp GBP Operating Account (Updated)\",\n  \"purposeCode\": \"PAYROLL\",\n  \"riskCategory\": \"LOW\",\n  \"updatedBy\": \"admin\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT Freeze Account",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"FROZEN\",\n  \"reason\": \"Regulatory hold pending investigation\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT Unfreeze Account",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\",\n  \"reason\": \"Investigation complete — no findings\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET List Accounts",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/accounts"
+          }
+        },
+        {
+          "name": "DELETE Close Account",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/v1/accounts/{{accountId}}?reason=Account closed by customer request",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "accounts", "{{accountId}}"],
+              "query": [{ "key": "reason", "value": "Account closed by customer request" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 – Account Parameters",
+      "item": [
+        {
+          "name": "GET Resolved Parameters",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/parameters"
+          }
+        },
+        {
+          "name": "GET Parameter Overrides",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/parameters/overrides"
+          }
+        },
+        {
+          "name": "POST Apply Override",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.success && json.data && json.data.paramKey) {",
+                  "    pm.collectionVariables.set('overrideParamKey', json.data.paramKey);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/parameters/overrides",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paramKey\": \"overdraft_limit\",\n  \"value\": \"250000\",\n  \"overrideReason\": \"Customer requested increase based on trading history\",\n  \"approvedBy\": \"RM-JOHN-SMITH\",\n  \"approvalRef\": \"APPREF-2026-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE Revert Override",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/parameters/overrides/{{overrideParamKey}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 – Account Balance",
+      "item": [
+        {
+          "name": "GET Full Balance",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/balance"
+          }
+        },
+        {
+          "name": "GET Balance Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/balance/summary"
+          }
+        },
+        {
+          "name": "POST Place Earmark",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.success && json.data && json.data.earmarkId) {",
+                  "    pm.collectionVariables.set('earmarkId', json.data.earmarkId);",
+                  "    console.log('earmarkId saved:', json.data.earmarkId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/balance/earmarks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"earmarkAmount\": 50000,\n  \"earmarkType\": \"HOLD\",\n  \"referenceId\": \"TXN-2026-0001\",\n  \"description\": \"Pending CHAPS payment hold\",\n  \"createdBy\": \"TXN-ENGINE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE Release Earmark",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/v1/accounts/{{accountId}}/balance/earmarks/{{earmarkId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8 – Account Ledger",
+      "item": [
+        {
+          "name": "GET Ledger (all)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/accounts/{{accountId}}/ledger?size=20&sort=valueDate,desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "accounts", "{{accountId}}", "ledger"],
+              "query": [
+                { "key": "size", "value": "20" },
+                { "key": "sort", "value": "valueDate,desc" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET Ledger (date range)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/accounts/{{accountId}}/ledger?from=2026-01-01&to=2026-12-31&size=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "accounts", "{{accountId}}", "ledger"],
+              "query": [
+                { "key": "from", "value": "2026-01-01" },
+                { "key": "to",   "value": "2026-12-31" },
+                { "key": "size", "value": "50" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
