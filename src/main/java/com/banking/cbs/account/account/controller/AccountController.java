@@ -2,6 +2,11 @@ package com.banking.cbs.account.account.controller;
 
 import com.banking.cbs.account.account.dto.*;
 import com.banking.cbs.account.account.entity.AccountLedger;
+import com.banking.cbs.account.account.dto.DailyPositionResponse;
+import com.banking.cbs.account.account.dto.UncollectedRequest;
+import com.banking.cbs.account.account.dto.UncollectedResponse;
+import com.banking.cbs.account.account.dto.BalanceUpdateRequest;
+import com.banking.cbs.account.account.dto.BalanceUpdateResult;
 import com.banking.cbs.account.account.service.AccountService;
 import com.banking.cbs.account.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -136,6 +141,100 @@ public class AccountController {
                                              @PathVariable String earmarkId) {
         service.releaseEarmark(accountId, earmarkId);
         return ApiResponse.ok("Earmark released", null);
+    }
+
+    @Operation(summary = "Release earmark (v2)", description = "Release an active earmark with reason and releasedBy tracking.")
+    @PutMapping("/{accountId}/earmarks/{earmarkId}/release")
+    public ApiResponse<EarmarkResponse> releaseEarmarkV2(@PathVariable String accountId,
+                                                          @PathVariable String earmarkId,
+                                                          @RequestParam String reason,
+                                                          @RequestParam String releasedBy) {
+        return ApiResponse.ok("Earmark released", service.releaseEarmark(accountId, earmarkId, reason, releasedBy));
+    }
+
+    @Operation(summary = "Cancel earmark", description = "Cancel an active earmark.")
+    @PutMapping("/{accountId}/earmarks/{earmarkId}/cancel")
+    public ApiResponse<EarmarkResponse> cancelEarmark(@PathVariable String accountId,
+                                                       @PathVariable String earmarkId,
+                                                       @RequestParam String reason) {
+        return ApiResponse.ok("Earmark cancelled", service.cancelEarmark(accountId, earmarkId, reason));
+    }
+
+    // ── Balance Position ──────────────────────────────────────────────────────
+
+    @Operation(summary = "Get daily position", description = "Get daily balance position for a specific date.")
+    @GetMapping("/{accountId}/balance/position")
+    public ApiResponse<DailyPositionResponse> getDailyPosition(
+            @PathVariable String accountId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ApiResponse.ok(service.getDailyPosition(accountId, date));
+    }
+
+    @Operation(summary = "Get today's position", description = "Get today's balance position.")
+    @GetMapping("/{accountId}/balance/position/today")
+    public ApiResponse<DailyPositionResponse> getTodayPosition(@PathVariable String accountId) {
+        return ApiResponse.ok(service.getTodayPosition(accountId));
+    }
+
+    @Operation(summary = "Get position history", description = "Get balance position history for a date range.")
+    @GetMapping("/{accountId}/balance/history")
+    public ApiResponse<List<DailyPositionResponse>> getPositionHistory(
+            @PathVariable String accountId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ApiResponse.ok(service.getPositionHistory(accountId, from, to));
+    }
+
+    // ── Uncollected Instruments ───────────────────────────────────────────────
+
+    @Operation(summary = "Register uncollected instrument", description = "Register a cheque, draft or other instrument as uncollected/pending clearing.")
+    @PostMapping("/{accountId}/uncollected")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<UncollectedResponse> registerUncollected(
+            @PathVariable String accountId,
+            @Valid @RequestBody UncollectedRequest req) {
+        req.setAccountId(accountId);
+        return ApiResponse.ok("Uncollected instrument registered", service.registerUncollected(req));
+    }
+
+    @Operation(summary = "List uncollected instruments", description = "List uncollected instruments for an account, optionally filtered by status.")
+    @GetMapping("/{accountId}/uncollected")
+    public ApiResponse<List<UncollectedResponse>> listUncollected(
+            @PathVariable String accountId,
+            @RequestParam(required = false) String status) {
+        return ApiResponse.ok(service.listUncollected(accountId, status));
+    }
+
+    @Operation(summary = "Clear uncollected instrument", description = "Mark an uncollected instrument as cleared and credit available balance.")
+    @PutMapping("/{accountId}/uncollected/{id}/clear")
+    public ApiResponse<UncollectedResponse> clearUncollected(
+            @PathVariable String accountId,
+            @PathVariable String id,
+            @RequestParam String clearingRef) {
+        return ApiResponse.ok("Instrument cleared", service.clearUncollected(accountId, id, clearingRef));
+    }
+
+    @Operation(summary = "Return uncollected instrument", description = "Mark an uncollected instrument as returned.")
+    @PutMapping("/{accountId}/uncollected/{id}/return")
+    public ApiResponse<UncollectedResponse> returnUncollected(
+            @PathVariable String accountId,
+            @PathVariable String id,
+            @RequestParam String returnReason) {
+        return ApiResponse.ok("Instrument returned", service.returnUncollected(accountId, id, returnReason));
+    }
+
+    // ── Internal: Posting Engine ──────────────────────────────────────────────
+
+    @Operation(summary = "Apply posting engine balance update", description = "Internal endpoint for posting engine to apply DR/CR balance movements.")
+    @PostMapping("/internal/balance-update")
+    public ApiResponse<BalanceUpdateResult> applyBalanceUpdate(@Valid @RequestBody BalanceUpdateRequest req) {
+        return ApiResponse.ok("Balance updated",
+                service.applyPostingEngineBalanceUpdate(
+                        req.getAccountId(),
+                        req.getDrCrIndicator(),
+                        req.getAmount(),
+                        req.getCurrencyCode(),
+                        req.getTxnId()));
     }
 
     // ── Account Ledger ────────────────────────────────────────────────────────

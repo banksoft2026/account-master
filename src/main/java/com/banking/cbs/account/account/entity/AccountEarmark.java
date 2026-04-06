@@ -56,4 +56,40 @@ public class AccountEarmark {
     @Version
     @Column(name = "version", nullable = false)
     private Integer version;
+
+    @Column(name = "earmark_ref", length = 100)
+    private String earmarkRef;
+
+    @Column(name = "source_module", length = 50, nullable = false)
+    private String sourceModule = "MANUAL_OPS";
+
+    @Column(name = "earmark_reason", length = 500)
+    private String earmarkReason;
+
+    @Column(name = "earmark_status", length = 20, nullable = false)
+    private String earmarkStatus = "ACTIVE";
+
+    @Column(name = "expiry_at")
+    private Instant expiryAt;
+
+    @Column(name = "released_amount", nullable = false, precision = 20, scale = 2)
+    private BigDecimal releasedAmount = BigDecimal.ZERO;
+
+    @Column(name = "released_at")
+    private Instant releasedAt;
+
+    @Column(name = "released_by", length = 36)
+    private String releasedBy;
+
+    @Column(name = "release_reason", length = 500)
+    private String releaseReason;
+
+    @Column(name = "release_txn_id", length = 36)
+    private String releaseTxnId;
+
+    @Column(name = "source_txn_id", length = 36)
+    private String sourceTxnId;
+
+    @Column(name = "approved_by", length = 36)
+    private String approvedBy;
 }

@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Data
 public class EarmarkRequest {
@@ -20,4 +21,10 @@ public class EarmarkRequest {
 
     @NotBlank(message = "createdBy is required")
     private String createdBy;
+
+    private String earmarkRef;
+    private String sourceModule = "MANUAL_OPS";
+    private String earmarkReason;
+    private Instant expiryAt;
+    private String approvedBy;
 }

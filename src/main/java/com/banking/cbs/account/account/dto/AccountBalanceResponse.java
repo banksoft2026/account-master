@@ -25,6 +25,15 @@ public class AccountBalanceResponse {
     private Instant updatedAt;
     private Integer version;
 
+    private Instant balanceAsAt;
+    private Long balanceVersion;
+    private Long txnSequence;
+    private BigDecimal accruedInterestCr;
+    private BigDecimal accruedInterestDr;
+    private BigDecimal floatAmount;
+    private Short earmarkCount;
+    private Short uncollectedCount;
+
     public static AccountBalanceResponse from(AccountBalance b) {
         AccountBalanceResponse r = new AccountBalanceResponse();
         r.setBalanceId(b.getBalanceId());
@@ -41,6 +50,14 @@ public class AccountBalanceResponse {
         r.setCreatedAt(b.getCreatedAt());
         r.setUpdatedAt(b.getUpdatedAt());
         r.setVersion(b.getVersion());
+        r.setBalanceAsAt(b.getBalanceAsAt());
+        r.setBalanceVersion(b.getBalanceVersion());
+        r.setTxnSequence(b.getTxnSequence());
+        r.setAccruedInterestCr(b.getAccruedInterestCr());
+        r.setAccruedInterestDr(b.getAccruedInterestDr());
+        r.setFloatAmount(b.getFloatAmount());
+        r.setEarmarkCount(b.getEarmarkCount());
+        r.setUncollectedCount(b.getUncollectedCount());
         return r;
     }
 }

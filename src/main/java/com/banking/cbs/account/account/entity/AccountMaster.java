@@ -115,6 +115,18 @@ public class AccountMaster {
     @Column(name = "version", nullable = false)
     private Integer version;
 
+    @Column(name = "balance_as_at")
+    private Instant balanceAsAt;
+
+    @Column(name = "balance_version", nullable = false)
+    private Long balanceVersion = 1L;
+
+    @Column(name = "last_txn_id", length = 36)
+    private String lastTxnId;
+
+    @Column(name = "last_txn_at")
+    private Instant lastTxnAt;
+
     @PrePersist
     void onPersist() {
         this.createdAt = Instant.now();

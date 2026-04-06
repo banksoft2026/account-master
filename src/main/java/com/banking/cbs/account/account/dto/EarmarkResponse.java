@@ -21,6 +21,17 @@ public class EarmarkResponse {
     private String createdBy;
     private Instant createdAt;
 
+    private String earmarkRef;
+    private String sourceModule;
+    private String earmarkReason;
+    private String earmarkStatus;
+    private Instant expiryAt;
+    private BigDecimal releasedAmount;
+    private Instant releasedAt;
+    private String releasedBy;
+    private String releaseReason;
+    private String sourceTxnId;
+
     public static EarmarkResponse from(AccountEarmark e) {
         EarmarkResponse r = new EarmarkResponse();
         r.setEarmarkId(e.getEarmarkId());
@@ -34,6 +45,16 @@ public class EarmarkResponse {
         r.setEffectiveTo(e.getEffectiveTo());
         r.setCreatedBy(e.getCreatedBy());
         r.setCreatedAt(e.getCreatedAt());
+        r.setEarmarkRef(e.getEarmarkRef());
+        r.setSourceModule(e.getSourceModule());
+        r.setEarmarkReason(e.getEarmarkReason());
+        r.setEarmarkStatus(e.getEarmarkStatus());
+        r.setExpiryAt(e.getExpiryAt());
+        r.setReleasedAmount(e.getReleasedAmount());
+        r.setReleasedAt(e.getReleasedAt());
+        r.setReleasedBy(e.getReleasedBy());
+        r.setReleaseReason(e.getReleaseReason());
+        r.setSourceTxnId(e.getSourceTxnId());
         return r;
     }
 }

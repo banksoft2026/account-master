@@ -52,6 +52,8 @@ public class AccountService {
     private final ProductParameterRepository productParamRepo;
     private final CbsMaintenanceClient cbsClient;
     private final CustomerEntityClient entityClient;
+    private final AccountDailyPositionRepository accountDailyPositionRepository;
+    private final AccountUncollectedRepository accountUncollectedRepository;
 
     // ── Eligibility Validation ────────────────────────────────────────────────
 
@@ -532,12 +534,21 @@ public class AccountService {
                 .description(req.getDescription())
                 .isActive(true)
                 .createdBy(req.getCreatedBy())
+                .earmarkRef(req.getEarmarkRef())
+                .sourceModule(req.getSourceModule() != null ? req.getSourceModule() : "MANUAL_OPS")
+                .earmarkReason(req.getEarmarkReason())
+                .earmarkStatus("ACTIVE")
+                .expiryAt(req.getExpiryAt())
+                .approvedBy(req.getApprovedBy())
                 .build();
         earmark = earmarkRepo.save(earmark);
 
         // Update balance
         balance.setEarmarkedAmount(balance.getEarmarkedAmount().add(req.getEarmarkAmount()));
         balance.setAvailableBalance(balance.getAvailableBalance().subtract(req.getEarmarkAmount()));
+        balance.setEarmarkCount((short) (balance.getEarmarkCount() + 1));
+        balance.setBalanceVersion(balance.getBalanceVersion() + 1);
+        balance.setBalanceAsAt(Instant.now());
         balance.setUpdatedAt(Instant.now());
         balanceRepo.save(balance);
 
@@ -574,6 +585,364 @@ public class AccountService {
         balanceRepo.save(balance);
 
         syncBalanceCache(accountId, balance);
+    }
+
+    @Transactional
+    public EarmarkResponse releaseEarmark(String accountId, String earmarkId, String releaseReason, String releasedBy) {
+        AccountEarmark earmark = earmarkRepo.findById(earmarkId)
+                .orElseThrow(() -> CbsException.notFound("EARMARK_NOT_FOUND",
+                        "Earmark not found: " + earmarkId));
+        if (!earmark.getAccountId().equals(accountId)) {
+            throw CbsException.badRequest("EARMARK_ACCOUNT_MISMATCH",
+                    "Earmark does not belong to account: " + accountId);
+        }
+        if (!"ACTIVE".equals(earmark.getEarmarkStatus())) {
+            throw CbsException.unprocessable("EARMARK_NOT_ACTIVE",
+                    "Earmark is not in ACTIVE status: " + earmark.getEarmarkStatus());
+        }
+
+        earmark.setEarmarkStatus("FULLY_RELEASED");
+        earmark.setReleasedAmount(earmark.getEarmarkAmount());
+        earmark.setReleasedAt(Instant.now());
+        earmark.setReleasedBy(releasedBy);
+        earmark.setReleaseReason(releaseReason);
+        earmark.setActive(false);
+        earmark.setEffectiveTo(Instant.now());
+        earmarkRepo.save(earmark);
+
+        AccountBalance balance = balanceRepo.findByAccountIdForUpdate(accountId)
+                .orElseThrow(() -> CbsException.notFound("BALANCE_NOT_FOUND",
+                        "Balance not found for account: " + accountId));
+        balance.setEarmarkedAmount(balance.getEarmarkedAmount().subtract(earmark.getEarmarkAmount()));
+        balance.setAvailableBalance(balance.getAvailableBalance().add(earmark.getEarmarkAmount()));
+        balance.setEarmarkCount((short) (balance.getEarmarkCount() - 1));
+        balance.setBalanceVersion(balance.getBalanceVersion() + 1);
+        balance.setBalanceAsAt(Instant.now());
+        balance.setUpdatedAt(Instant.now());
+        balanceRepo.save(balance);
+
+        accountRepo.findById(accountId).ifPresent(acct -> {
+            acct.setEarmarkedAmount(balance.getEarmarkedAmount());
+            acct.setAvailableBalance(balance.getAvailableBalance());
+            acct.setBalanceVersion(balance.getBalanceVersion());
+            acct.setBalanceAsAt(balance.getBalanceAsAt());
+            acct.setUpdatedAt(Instant.now());
+            accountRepo.save(acct);
+        });
+
+        return EarmarkResponse.from(earmark);
+    }
+
+    @Transactional
+    public EarmarkResponse cancelEarmark(String accountId, String earmarkId, String reason) {
+        AccountEarmark earmark = earmarkRepo.findById(earmarkId)
+                .orElseThrow(() -> CbsException.notFound("EARMARK_NOT_FOUND",
+                        "Earmark not found: " + earmarkId));
+        if (!earmark.getAccountId().equals(accountId)) {
+            throw CbsException.badRequest("EARMARK_ACCOUNT_MISMATCH",
+                    "Earmark does not belong to account: " + accountId);
+        }
+        if (!"ACTIVE".equals(earmark.getEarmarkStatus())) {
+            throw CbsException.unprocessable("EARMARK_NOT_ACTIVE",
+                    "Earmark is not in ACTIVE status: " + earmark.getEarmarkStatus());
+        }
+
+        earmark.setEarmarkStatus("CANCELLED");
+        earmark.setReleasedAmount(earmark.getEarmarkAmount());
+        earmark.setReleasedAt(Instant.now());
+        earmark.setReleaseReason(reason);
+        earmark.setActive(false);
+        earmark.setEffectiveTo(Instant.now());
+        earmarkRepo.save(earmark);
+
+        AccountBalance balance = balanceRepo.findByAccountIdForUpdate(accountId)
+                .orElseThrow(() -> CbsException.notFound("BALANCE_NOT_FOUND",
+                        "Balance not found for account: " + accountId));
+        balance.setEarmarkedAmount(balance.getEarmarkedAmount().subtract(earmark.getEarmarkAmount()));
+        balance.setAvailableBalance(balance.getAvailableBalance().add(earmark.getEarmarkAmount()));
+        balance.setEarmarkCount((short) (balance.getEarmarkCount() - 1));
+        balance.setBalanceVersion(balance.getBalanceVersion() + 1);
+        balance.setBalanceAsAt(Instant.now());
+        balance.setUpdatedAt(Instant.now());
+        balanceRepo.save(balance);
+
+        accountRepo.findById(accountId).ifPresent(acct -> {
+            acct.setEarmarkedAmount(balance.getEarmarkedAmount());
+            acct.setAvailableBalance(balance.getAvailableBalance());
+            acct.setBalanceVersion(balance.getBalanceVersion());
+            acct.setBalanceAsAt(balance.getBalanceAsAt());
+            acct.setUpdatedAt(Instant.now());
+            accountRepo.save(acct);
+        });
+
+        return EarmarkResponse.from(earmark);
+    }
+
+    // ── Uncollected Instruments ───────────────────────────────────────────────
+
+    @Transactional
+    public UncollectedResponse registerUncollected(UncollectedRequest req) {
+        AccountMaster account = loadAccount(req.getAccountId());
+        if (!"ACTIVE".equals(account.getAccountStatus())) {
+            throw CbsException.unprocessable("ACCOUNT_NOT_ACTIVE",
+                    "Account is not ACTIVE: " + account.getAccountStatus());
+        }
+
+        AccountUncollected uncollected = AccountUncollected.builder()
+                .accountId(req.getAccountId())
+                .instrumentType(req.getInstrumentType())
+                .instrumentRef(req.getInstrumentRef())
+                .presentingBank(req.getPresentingBank())
+                .presentingBankBic(req.getPresentingBankBic())
+                .instrumentAmount(req.getInstrumentAmount())
+                .currencyCode(req.getCurrencyCode())
+                .collectionStatus("PRESENTED")
+                .presentedDate(req.getPresentedDate())
+                .expectedClearanceDate(req.getExpectedClearanceDate())
+                .createdBy(req.getCreatedBy())
+                .build();
+        uncollected = accountUncollectedRepository.save(uncollected);
+
+        AccountBalance balance = balanceRepo.findByAccountId(req.getAccountId())
+                .orElseThrow(() -> CbsException.notFound("BALANCE_NOT_FOUND",
+                        "Balance not found for account: " + req.getAccountId()));
+        balance.setUncollectedAmount(balance.getUncollectedAmount().add(req.getInstrumentAmount()));
+        balance.setUncollectedCount((short) (balance.getUncollectedCount() + 1));
+        // availableBalance unchanged per key rule
+        balance.setUpdatedAt(Instant.now());
+        balanceRepo.save(balance);
+
+        accountRepo.findById(req.getAccountId()).ifPresent(acct -> {
+            acct.setUncollectedAmount(balance.getUncollectedAmount());
+            acct.setUpdatedAt(Instant.now());
+            accountRepo.save(acct);
+        });
+
+        return UncollectedResponse.from(uncollected);
+    }
+
+    @Transactional
+    public UncollectedResponse clearUncollected(String accountId, String uncollectedId, String clearingRef) {
+        AccountUncollected item = accountUncollectedRepository.findById(uncollectedId)
+                .orElseThrow(() -> CbsException.notFound("UNCOLLECTED_NOT_FOUND",
+                        "Uncollected item not found: " + uncollectedId));
+        if (!item.getAccountId().equals(accountId)) {
+            throw CbsException.badRequest("UNCOLLECTED_ACCOUNT_MISMATCH",
+                    "Uncollected item does not belong to account: " + accountId);
+        }
+        if (!"PRESENTED".equals(item.getCollectionStatus()) && !"IN_CLEARING".equals(item.getCollectionStatus())) {
+            throw CbsException.unprocessable("INVALID_UNCOLLECTED_STATUS",
+                    "Item must be in PRESENTED or IN_CLEARING status. Current: " + item.getCollectionStatus());
+        }
+
+        item.setCollectionStatus("CLEARED");
+        item.setActualClearanceDate(LocalDate.now());
+        item.setClearedAmount(item.getInstrumentAmount());
+        item.setClearingRef(clearingRef);
+        accountUncollectedRepository.save(item);
+
+        AccountBalance balance = balanceRepo.findByAccountIdForUpdate(accountId)
+                .orElseThrow(() -> CbsException.notFound("BALANCE_NOT_FOUND",
+                        "Balance not found for account: " + accountId));
+        balance.setUncollectedAmount(balance.getUncollectedAmount().subtract(item.getInstrumentAmount()));
+        balance.setUncollectedCount((short) (balance.getUncollectedCount() - 1));
+        balance.setAvailableBalance(balance.getAvailableBalance().add(item.getInstrumentAmount()));
+        balance.setBalanceVersion(balance.getBalanceVersion() + 1);
+        balance.setBalanceAsAt(Instant.now());
+        balance.setUpdatedAt(Instant.now());
+        balanceRepo.save(balance);
+
+        accountRepo.findById(accountId).ifPresent(acct -> {
+            acct.setUncollectedAmount(balance.getUncollectedAmount());
+            acct.setAvailableBalance(balance.getAvailableBalance());
+            acct.setBalanceVersion(balance.getBalanceVersion());
+            acct.setBalanceAsAt(balance.getBalanceAsAt());
+            acct.setUpdatedAt(Instant.now());
+            accountRepo.save(acct);
+        });
+
+        return UncollectedResponse.from(item);
+    }
+
+    @Transactional
+    public UncollectedResponse returnUncollected(String accountId, String uncollectedId, String returnReason) {
+        AccountUncollected item = accountUncollectedRepository.findById(uncollectedId)
+                .orElseThrow(() -> CbsException.notFound("UNCOLLECTED_NOT_FOUND",
+                        "Uncollected item not found: " + uncollectedId));
+        if (!item.getAccountId().equals(accountId)) {
+            throw CbsException.badRequest("UNCOLLECTED_ACCOUNT_MISMATCH",
+                    "Uncollected item does not belong to account: " + accountId);
+        }
+
+        item.setCollectionStatus("RETURNED");
+        item.setReturnedAmount(item.getInstrumentAmount());
+        item.setReturnReason(returnReason);
+        accountUncollectedRepository.save(item);
+
+        AccountBalance balance = balanceRepo.findByAccountId(accountId)
+                .orElseThrow(() -> CbsException.notFound("BALANCE_NOT_FOUND",
+                        "Balance not found for account: " + accountId));
+        balance.setUncollectedAmount(balance.getUncollectedAmount().subtract(item.getInstrumentAmount()));
+        balance.setUncollectedCount((short) (balance.getUncollectedCount() - 1));
+        // availableBalance unchanged
+        balance.setUpdatedAt(Instant.now());
+        balanceRepo.save(balance);
+
+        accountRepo.findById(accountId).ifPresent(acct -> {
+            acct.setUncollectedAmount(balance.getUncollectedAmount());
+            acct.setUpdatedAt(Instant.now());
+            accountRepo.save(acct);
+        });
+
+        return UncollectedResponse.from(item);
+    }
+
+    public List<UncollectedResponse> listUncollected(String accountId, String status) {
+        loadAccount(accountId);
+        List<AccountUncollected> items;
+        if (status != null) {
+            items = accountUncollectedRepository.findByAccountIdAndCollectionStatusIn(
+                    accountId, List.of(status));
+        } else {
+            items = accountUncollectedRepository.findByAccountIdOrderByPresentedDateDesc(accountId);
+        }
+        return items.stream().map(UncollectedResponse::from).collect(Collectors.toList());
+    }
+
+    // ── Daily Position ────────────────────────────────────────────────────────
+
+    public DailyPositionResponse getDailyPosition(String accountId, LocalDate date) {
+        loadAccount(accountId);
+        return accountDailyPositionRepository
+                .findByAccountIdAndPositionDateBetweenOrderByPositionDateDesc(accountId, date, date)
+                .stream().findFirst()
+                .map(DailyPositionResponse::from)
+                .orElseThrow(() -> CbsException.notFound("POSITION_NOT_FOUND",
+                        "Daily position not found for account " + accountId + " on " + date));
+    }
+
+    public DailyPositionResponse getTodayPosition(String accountId) {
+        return getDailyPosition(accountId, LocalDate.now());
+    }
+
+    public List<DailyPositionResponse> getPositionHistory(String accountId, LocalDate from, LocalDate to) {
+        loadAccount(accountId);
+        return accountDailyPositionRepository
+                .findByAccountIdAndPositionDateBetweenOrderByPositionDateDesc(accountId, from, to)
+                .stream().map(DailyPositionResponse::from).collect(Collectors.toList());
+    }
+
+    // ── Posting Engine Balance Update ─────────────────────────────────────────
+
+    @Transactional
+    public BalanceUpdateResult applyPostingEngineBalanceUpdate(
+            String accountId,
+            String drCrIndicator,
+            BigDecimal txnAmount,
+            String currencyCode,
+            String txnId) {
+
+        AccountBalance bal = balanceRepo.findByAccountIdForUpdate(accountId)
+                .orElseThrow(() -> CbsException.notFound("BALANCE_NOT_FOUND",
+                        "Balance not found for account " + accountId));
+
+        BigDecimal prevLedger = bal.getLedgerBalance();
+        BigDecimal newLedger;
+        BigDecimal newAvailable;
+
+        if ("DR".equals(drCrIndicator)) {
+            newLedger    = prevLedger.subtract(txnAmount);
+            newAvailable = bal.getAvailableBalance().subtract(txnAmount);
+        } else {
+            newLedger    = prevLedger.add(txnAmount);
+            newAvailable = bal.getAvailableBalance().add(txnAmount);
+        }
+
+        BigDecimal newOdUtilised = newLedger.compareTo(BigDecimal.ZERO) < 0
+                ? newLedger.abs() : BigDecimal.ZERO;
+
+        if (newAvailable.compareTo(bal.getOverdraftLimit().negate()) < 0) {
+            throw CbsException.unprocessable("OVERDRAFT_LIMIT_BREACH",
+                    "Transaction would breach overdraft limit");
+        }
+
+        bal.setLedgerBalance(newLedger);
+        bal.setAvailableBalance(newAvailable);
+        bal.setOverdraftUtilised(newOdUtilised);
+        bal.setBalanceAsAt(Instant.now());
+        bal.setLastTxnId(txnId);
+        bal.setLastTxnAt(Instant.now());
+        bal.setTxnSequence(bal.getTxnSequence() + 1);
+        bal.setBalanceVersion(bal.getBalanceVersion() + 1);
+        balanceRepo.save(bal);
+
+        AccountMaster acct = accountRepo.findById(accountId)
+                .orElseThrow(() -> CbsException.notFound("ACCOUNT_NOT_FOUND",
+                        "Account not found"));
+        acct.setLedgerBalance(newLedger);
+        acct.setAvailableBalance(newAvailable);
+        acct.setOverdraftUtilised(newOdUtilised);
+        acct.setBalanceAsAt(Instant.now());
+        acct.setLastTxnId(txnId);
+        acct.setLastTxnAt(Instant.now());
+        acct.setBalanceVersion(bal.getBalanceVersion());
+        accountRepo.save(acct);
+
+        upsertDailyPosition(accountId, currencyCode, prevLedger, newLedger, txnAmount, drCrIndicator);
+
+        return BalanceUpdateResult.builder()
+                .accountId(accountId)
+                .newLedgerBalance(newLedger)
+                .newAvailableBalance(newAvailable)
+                .overdraftUtilised(newOdUtilised)
+                .balanceVersion(bal.getBalanceVersion())
+                .txnSequence(bal.getTxnSequence())
+                .build();
+    }
+
+    private void upsertDailyPosition(String accountId, String currencyCode,
+            BigDecimal prevLedger, BigDecimal newLedger, BigDecimal txnAmount, String drCr) {
+        LocalDate today = LocalDate.now();
+        AccountDailyPosition pos = accountDailyPositionRepository
+                .findByAccountIdAndPositionDateAndCurrencyCode(accountId, today, currencyCode)
+                .orElse(AccountDailyPosition.builder()
+                        .accountId(accountId)
+                        .currencyCode(currencyCode)
+                        .positionDate(today)
+                        .openingBalance(prevLedger)
+                        .totalCredits(BigDecimal.ZERO)
+                        .totalDebits(BigDecimal.ZERO)
+                        .creditCount(0)
+                        .debitCount(0)
+                        .peakBalance(prevLedger)
+                        .troughBalance(prevLedger)
+                        .build());
+
+        if ("CR".equals(drCr)) {
+            pos.setTotalCredits(pos.getTotalCredits().add(txnAmount));
+            pos.setCreditCount(pos.getCreditCount() + 1);
+        } else {
+            pos.setTotalDebits(pos.getTotalDebits().add(txnAmount));
+            pos.setDebitCount(pos.getDebitCount() + 1);
+        }
+
+        if (pos.getPeakBalance() == null || newLedger.compareTo(pos.getPeakBalance()) > 0)
+            pos.setPeakBalance(newLedger);
+        if (pos.getTroughBalance() == null || newLedger.compareTo(pos.getTroughBalance()) < 0)
+            pos.setTroughBalance(newLedger);
+
+        int totalTxns = pos.getCreditCount() + pos.getDebitCount();
+        if (pos.getAverageBalance() == null) {
+            pos.setAverageBalance(newLedger);
+        } else {
+            BigDecimal prevAvg = pos.getAverageBalance();
+            BigDecimal prevCount = BigDecimal.valueOf(totalTxns - 1);
+            pos.setAverageBalance(
+                    prevAvg.multiply(prevCount).add(newLedger)
+                            .divide(BigDecimal.valueOf(totalTxns), 2, java.math.RoundingMode.HALF_UP));
+        }
+
+        accountDailyPositionRepository.save(pos);
     }
 
     // ── Ledger ────────────────────────────────────────────────────────────────

@@ -57,4 +57,37 @@ public class AccountBalance {
     @Version
     @Column(name = "version", nullable = false)
     private Integer version;
+
+    @Column(name = "balance_as_at")
+    private Instant balanceAsAt;
+
+    @Column(name = "balance_version", nullable = false)
+    private Long balanceVersion = 1L;
+
+    @Column(name = "last_txn_id", length = 36)
+    private String lastTxnId;
+
+    @Column(name = "last_txn_at")
+    private Instant lastTxnAt;
+
+    @Column(name = "txn_sequence", nullable = false)
+    private Long txnSequence = 0L;
+
+    @Column(name = "accrued_interest_cr", nullable = false, precision = 20, scale = 2)
+    private BigDecimal accruedInterestCr = BigDecimal.ZERO;
+
+    @Column(name = "accrued_interest_dr", nullable = false, precision = 20, scale = 2)
+    private BigDecimal accruedInterestDr = BigDecimal.ZERO;
+
+    @Column(name = "float_amount", nullable = false, precision = 20, scale = 2)
+    private BigDecimal floatAmount = BigDecimal.ZERO;
+
+    @Column(name = "shadow_balance", nullable = false, precision = 20, scale = 2)
+    private BigDecimal shadowBalance = BigDecimal.ZERO;
+
+    @Column(name = "earmark_count", nullable = false)
+    private Short earmarkCount = 0;
+
+    @Column(name = "uncollected_count", nullable = false)
+    private Short uncollectedCount = 0;
 }
